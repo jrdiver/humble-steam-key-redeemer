@@ -2,7 +2,7 @@ import requests
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from fuzzywuzzy import fuzz
-import steam.webauth as wa
+import webauth as wa
 import time
 import pickle
 from pwinput import pwinput
@@ -139,7 +139,7 @@ def process_quit(driver):
     signal.signal(signal.SIGINT,quit_on_exit)
 
 def get_headless_driver():
-    possibleDrivers = [(webdriver.Chrome,webdriver.ChromeOptions),(webdriver.Firefox,webdriver.FirefoxOptions)]
+    possibleDrivers = [(webdriver.Firefox,webdriver.FirefoxOptions),(webdriver.Chrome,webdriver.ChromeOptions)]
     driver = None
 
     exceptions = []
@@ -328,8 +328,9 @@ def steam_login():
 
     # Saved state doesn't work, prompt user to sign in.
     s_username = input("Steam Username: ")
-    user = wa.WebAuth(s_username)
-    session = user.cli_login()
+    s_psw = input("Steam Password: ")
+    user = wa.WebAuth2()
+    session = user.login(s_username, s_psw)
     export_cookies(".steamcookies", session)
     return session
 
