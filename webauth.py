@@ -144,8 +144,8 @@ class WebAuth2(object):
              }, 'IAuthentication', 'BeginAuthSessionViaCredentials', 1)
         
         if "allowed_confirmations" in r['response']:
-            print("Respond to steam guard within 10 seconds")
-            sleep(10)
+            print("Respond to steam guard within 20 seconds")
+            sleep(20)
 
         self.clientID = r['response']['client_id']
         self.requestID = r['response']['request_id']

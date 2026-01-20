@@ -252,17 +252,38 @@ def do_login(driver,payload):
 
 def humble_login(driver):
     cls()
+    
+    # Attempt to use saved session BEFORE navigating
+    if os.path.exists(".humblecookies"):
+        try:
+            cookies = pickle.load(open(".humblecookies", "rb"))
+            driver.get(HUMBLE_LOGIN_PAGE)
+            for cookie in cookies:
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    # Cookie might be expired or invalid
+                    pass
+            # Navigate to library to check login status
+            driver.get(HUMBLE_KEYS_PAGE)
+            time.sleep(2)  # Give page time to load
+            if verify_logins_session(driver)[0]:
+                print("Using saved Humble session")
+                return True
+            else:
+                print("Saved Humble session expired, logging in...")
+        except Exception as e:
+            print(f"Error loading cookies: {e}")
+            print("Logging in fresh...")
+    
+    # Navigate to login page for fresh login
     driver.get(HUMBLE_LOGIN_PAGE)
-    # Attempt to use saved session
-    if try_recover_cookies(".humblecookies", driver) and verify_logins_session(driver)[0]:
-        return True
 
     # Saved session didn't work
     authorized = False
     while not authorized:
         username = input("Humble Email: ")
         password = pwinput()
-
 
         payload = {
             "access_token": "",
@@ -421,7 +442,17 @@ def _redeem_steam(session, key, quiet=False):
         return 0
     session_id = session.cookies.get_dict()["sessionid"]
     r = session.post(STEAM_REDEEM_API, data={"product_key": key, "sessionid": session_id})
-    blob = r.json()
+    try:
+        blob = r.json()
+    except json.JSONDecodeError:
+        # Handle BOM or non‑JSON error pages
+        try:
+            blob = json.loads(r.content.decode("utf-8-sig"))
+        except Exception:
+            if not quiet:
+                print("Steam redeem response was not JSON:")
+                print(r.text[:500])
+            return 53
 
     if blob["success"] == 1:
         for item in blob["purchase_receipt_info"]["line_items"]:
@@ -562,12 +593,7 @@ def prompt_yes_no(question):
 def get_owned_apps(steam_session):
     owned_content = steam_session.get(STEAM_USERDATA_API).json()
     owned_app_ids = owned_content["rgOwnedPackages"] + owned_content["rgOwnedApps"]
-    owned_app_details = {
-        app["appid"]: app["name"]
-        for app in steam_session.get(STEAM_APP_LIST_API).json()["applist"]["apps"]
-        if app["appid"] in owned_app_ids
-    }
-    return owned_app_details
+    return owned_app_ids  # Just return the IDs, not the details
 
 def match_ownership(owned_app_details, game, filter_live):
     threshold = 70
@@ -621,40 +647,17 @@ def redeem_steam_keys(humble_session, humble_keys):
     print("Getting your owned content to avoid attempting to register keys already owned...")
 
     # Query owned App IDs according to Steam
-    owned_app_details = get_owned_apps(session)
+    owned_app_ids = get_owned_apps(session)
 
-    noted_keys = [key for key in humble_keys if key["steam_app_id"] not in owned_app_details.keys()]
-    skipped_games = {}
-    unownedgames = []
-
-    # Some Steam keys come back with no Steam AppID from Humble
-    # So we do our best to look up from AppIDs (no packages, because can't find an API for it)
-
-    filter_live = prompt_filter_live() == "y"
-
-    for game in noted_keys:
-        best_match = match_ownership(owned_app_details,game,filter_live)
-        if best_match[1] is not None and best_match[1] in owned_app_details.keys():
-            skipped_games[game["human_name"].strip()] = game
-        else:
-            unownedgames.append(game)
-
-    print(
-        "Filtered out game keys that you already own on Steam; {} keys unowned.".format(
-            len(unownedgames)
-        )
-    )
-
-    if len(skipped_games):
-        # Skipped games uncertain to be owned by user. Let user choose
-        unownedgames = unownedgames + prompt_skipped(skipped_games)
-        print("{} keys will be attempted.".format(len(unownedgames)))
-        # Preserve original order
-        unownedgames = sorted(unownedgames,key=lambda g: humble_keys.index(g))
+    # Simple filtering - only by Steam App ID
+    noted_keys = [key for key in humble_keys if key.get("steam_app_id") not in owned_app_ids]
+    
+    print(f"Filtered out {len(humble_keys) - len(noted_keys)} games based on Steam ownership.")
+    print(f"{len(noted_keys)} keys will be attempted.")
     
     redeemed = []
 
-    for key in unownedgames:
+    for key in noted_keys:
         print(key["human_name"])
 
         if key["human_name"] in redeemed or (key["steam_app_id"] != None and key["steam_app_id"] in redeemed):
@@ -670,7 +673,6 @@ def redeem_steam_keys(humble_session, humble_keys):
             # This key is unredeemed via Humble, trigger redemption process.
             redeemed_key = redeem_humble_key(humble_session, key)
             key["redeemed_key_val"] = redeemed_key
-            # Worth noting this will only persist for this loop -- does not get saved to unownedgames' obj
 
         if not valid_steam_key(key["redeemed_key_val"]):
             # Most likely humble gift link
@@ -681,12 +683,6 @@ def redeem_steam_keys(humble_session, humble_keys):
         animation = "|/-\\"
         seconds = 0
         while code == 53:
-            """NOTE
-            Steam seems to limit to about 50 keys/hr -- even if all 50 keys are legitimate *sigh*
-            Even worse: 10 *failed* keys/hr
-            Duplication counts towards Steam's _failure rate limit_,
-            hence why we've worked so hard above to figure out what we already own
-            """
             current_animation = animation[seconds % len(animation)]
             print(
                 f"Waiting for rate limit to go away (takes an hour after first key insert) {current_animation}",
@@ -695,7 +691,6 @@ def redeem_steam_keys(humble_session, humble_keys):
             time.sleep(1)
             seconds = seconds + 1
             if seconds % 60 == 0:
-                # Try again every 60 seconds
                 code = _redeem_steam(session, key["redeemed_key_val"], quiet=True)
 
         write_key(code, key)
@@ -785,7 +780,7 @@ def choose_games(humble_session,choice_month_name,identifier,chosen):
                 "is_multikey_and_from_choice_modal":"false"
             }
             status,res = perform_post(driver,HUMBLE_CHOOSE_CONTENT,payload)
-            if not ("success" in res or not res["success"]):
+            if not ("success" in res and res["success"]):
                 print("Error choosing " + choice["title"])
                 print(res)
             else:
@@ -793,7 +788,7 @@ def choose_games(humble_session,choice_month_name,identifier,chosen):
 
 
 def humble_chooser_mode(humble_session,order_details):
-    try_redeem_keys = []
+    try_recover_keys = []
     months = get_choices(humble_session,order_details)
     count = 0
     first = True
@@ -852,7 +847,7 @@ def humble_chooser_mode(humble_session,order_details):
                 webbrowser.open(HUMBLE_SUB_PAGE + month["product"]["choice_url"])
                 if redeem_keys:
                     # May have redeemed keys on the webpage.
-                    try_redeem_keys.append(month["gamekey"])
+                    try_recover_keys.append(month["gamekey"])
             else:
                 invalid_option = lambda option: (
                     not option.isnumeric()
@@ -882,15 +877,15 @@ def humble_chooser_mode(humble_session,order_details):
                             identifier = month["parent_identifier"]
                             choose_games(humble_session,choice_month_name,identifier,chosen)
                             if redeem_keys:
-                                try_redeem_keys.append(month["gamekey"])
+                                try_recover_keys.append(month["gamekey"])
                             ready = True
     if(first):
         print("No Humble Choices need choosing! Look at you all up-to-date!")
     else:
         print("No more unchosen Humble Choices")
-        if(redeem_keys and len(try_redeem_keys) > 0):
+        if(redeem_keys and len(try_recover_keys) > 0):
             print("Redeeming keys now!")
-            updated_monthlies = humble_session.execute_async_script(getHumbleOrders.replace('%optional%',json.dumps(try_redeem_keys)))
+            updated_monthlies = humble_session.execute_async_script(getHumbleOrders.replace('%optional%',json.dumps(try_recover_keys)))
             chosen_keys = list(find_dict_keys(updated_monthlies,"steam_app_id",True))
             redeem_steam_keys(humble_session,chosen_keys)
 
