@@ -2,7 +2,7 @@ import requests
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from fuzzywuzzy import fuzz
-import webauth as wa
+import steam.webauth as wa
 import time
 import pickle
 from pwinput import pwinput
@@ -349,7 +349,7 @@ def steam_login():
     # Saved state doesn't work, prompt user to sign in.
     s_username = input("Steam Username: ")
     s_psw = pwinput(prompt="Steam Password: ")
-    user = wa.WebAuth2()
+    user = wa.WebAuth()
     session = user.cli_login(s_username, s_psw)
     export_cookies(".steamcookies", session)
     return session
