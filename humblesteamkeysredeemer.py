@@ -349,9 +349,9 @@ def steam_login():
 
     # Saved state doesn't work, prompt user to sign in.
     s_username = input("Steam Username: ")
-    s_psw = input("Steam Password: ")
+    s_psw = pwinput(prompt="Steam Password: ")
     user = wa.WebAuth2()
-    session = user.login(s_username, s_psw)
+    session = user.cli_login(s_username, s_psw)
     export_cookies(".steamcookies", session)
     return session
 
