@@ -99,9 +99,8 @@ def sendAPIRequest(data, sApiInterface, sApiMethod, sApiVersion):
     return res.json()
 
 
-# Updated implementation of WebAuth for the new steam login method (old one is gutted on valve's end and cannot be used anymore)
-# TODO: Steam guard support
-# TODO: Replace WebAuth with this new class when everything is fully implemented (steam guard)
+# Updated implementation of WebAuth for the current Steam login method.
+# The legacy WebAuth class remains below for compatibility with the older flow.
 class WebAuth2(object):
     username = None
     password = None

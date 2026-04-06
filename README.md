@@ -37,9 +37,12 @@ Requires Python version 3.6 or above
 
 Install the required dependencies with
 ```
-pip install -r requirements.txt
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 If you want to install `python-Levenshtein`:
 ```
-pip install python-Levenshtein
+.venv\Scripts\python.exe -m pip install python-Levenshtein
 ```
+
+On Windows, `run_redeemer.bat` will create `.venv` automatically if it does not already exist, then install dependencies into that environment before launching the script.

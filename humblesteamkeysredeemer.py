@@ -10,7 +10,6 @@ import os
 import json
 import sys
 import webbrowser
-import os
 from base64 import b64encode
 import atexit
 import signal
@@ -225,7 +224,7 @@ def export_cookies(cookie_file, session):
             cookies = session.get_cookies()
         pickle.dump(cookies, open(cookie_file,"wb"))
         return True
-    except:
+    except Exception:
         return False
 
 is_logged_in = '''
@@ -369,7 +368,7 @@ def redeem_humble_key(sess, tpk):
         return ""
     try:
         return respjson["key"]
-    except:
+    except (KeyError, TypeError):
         return respjson
 
 
